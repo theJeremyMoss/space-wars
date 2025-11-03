@@ -1,4 +1,4 @@
-# Star Invaders 👾
+# Space Wars 👾
 
 A Space Invaders style game with fun graphics.
 
@@ -18,7 +18,7 @@ A Space Invaders style game with fun graphics.
 - You have 3 lives
 
 ## Demo
-Try it: https://leeeeeroyj.github.io/star-invaders/
+Try it: https://thejeremymoss.github.io/space-wars/
 
 ## Troubleshooting
 If you encounter any issues or the game behaves unexpectedly, **reload the page** to restart the game.
