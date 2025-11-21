@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,15 +17,18 @@
             min-height: 100vh;
             background-color: #1a1a1a;
         }
+
         #game-container {
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
         }
+
         canvas {
             display: block;
             margin: 0 auto;
         }
     </style>
 </head>
+
 <body>
     <div id="game-container"></div>
     <script>
@@ -60,98 +64,117 @@
         let enemyBullets;
         let lastEnemyFired = 0;
         let nextEnemyFireTime = 0;
-    let enemies;
-    let deathStar;
-    const GRID_ROWS = 4;
-    const GRID_COLS = 8;
+        let enemies;
+        let deathStar;
+        const GRID_ROWS = 4;
+        const GRID_COLS = 8;
 
-    // Enemy movement state
-    let enemyRows = [];        // array of arrays, each row holds its enemy sprites
-    let rowDirections = [];    // 1 or -1 for each row
-    let rowOffsets = [];       // current horizontal offset for each row (px)
-    // Step-based movement (Space Invaders style)
-    let stepInterval = 500;    // ms between steps (adjustable to speed up later)
-    let stepDistance = 8;      // px per step
-    let stepTimer = 0;         // accumulates delta ms
-    const edgePadding = 10;    // pixels padding from screen edges before reversing
-    // Scoring and respawn
-    let score = 0;
-    let scoreText;
-    const enemyValues = { 'enemy1': 50, 'enemy2': 100 };
-    let enemyRespawnDelay = 3000; // ms (configurable)
-    // Lives system
-    let lives = 3;
-    let livesIcons;
-    let playerInvulnerable = false;
-    let playerRespawning = false; // Track if player is respawning
-    let gameOver = false;
-    let playerEnemyBulletCollider = null;
-    
-    // Audio context for sound effects
-    let audioContext;
-    
-    // Sound generation functions
-    function createShootSound() {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.value = 800;
-        oscillator.type = 'square';
-        
-        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.1);
-    }
-    
-    function createExplosionSound() {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        
-        // Create noise-like explosion sound using multiple oscillators
-        const duration = 0.3;
-        const gainNode = audioContext.createGain();
-        gainNode.connect(audioContext.destination);
-        gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-        
-        // Multiple frequencies for explosion effect
-        const frequencies = [60, 80, 100, 120];
-        frequencies.forEach((freq, i) => {
+        // Enemy movement state
+        let enemyRows = [];        // array of arrays, each row holds its enemy sprites
+        let rowDirections = [];    // 1 or -1 for each row
+        let rowOffsets = [];       // current horizontal offset for each row (px)
+        // Step-based movement (Space Invaders style)
+        let stepInterval = 500;    // ms between steps (adjustable to speed up later)
+        let stepDistance = 8;      // px per step
+        let stepTimer = 0;         // accumulates delta ms
+        const edgePadding = 10;    // pixels padding from screen edges before reversing
+        // Scoring and respawn
+        let score = 0;
+        let scoreText;
+        const enemyValues = { 'enemy1': 50, 'enemy2': 100 };
+        let enemyRespawnDelay = 6000; // Increased from 3000ms to 6000ms
+        // Lives system
+        let lives = 3;
+        let livesIcons;
+        let playerInvulnerable = false;
+        let playerRespawning = false; // Track if player is respawning
+        let gameOver = false;
+        let playerEnemyBulletCollider = null;
+
+        // Audio context for sound effects
+        let audioContext;
+
+        // Sound generation functions
+        // Sound generation functions
+        function createShootSound() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const t = audioContext.currentTime;
             const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
             oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            // Laser chirp: high to low frequency
             oscillator.type = 'sawtooth';
-            oscillator.frequency.value = freq;
-            oscillator.start(audioContext.currentTime + i * 0.01);
-            oscillator.stop(audioContext.currentTime + duration);
-        });
-    }
+            oscillator.frequency.setValueAtTime(800, t);
+            oscillator.frequency.exponentialRampToValueAtTime(100, t + 0.15);
+
+            // Envelope: sharp attack, quick decay
+            gainNode.gain.setValueAtTime(0.1, t);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+
+            oscillator.start(t);
+            oscillator.stop(t + 0.15);
+        }
+
+        function createExplosionSound() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const t = audioContext.currentTime;
+            const duration = 0.5;
+
+            // Create noise buffer
+            const bufferSize = audioContext.sampleRate * duration;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+
+            const noise = audioContext.createBufferSource();
+            noise.buffer = buffer;
+
+            // Filter for "rumble"
+            const filter = audioContext.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1000, t);
+            filter.frequency.linearRampToValueAtTime(100, t + duration);
+
+            const gainNode = audioContext.createGain();
+
+            noise.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            // Envelope
+            gainNode.gain.setValueAtTime(0.3, t);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, t + duration);
+
+            noise.start(t);
+        }
 
         function updateLivesDisplay() {
             // Clear existing lives icons
             if (livesIcons) {
                 livesIcons.children.entries.forEach(icon => icon.destroy());
             }
-            
+
             // Show unused lives (lives - 1, since 1 is the active player)
             const unusedLives = Math.max(0, lives - 1);
-            
+
             // Create ship icons for unused lives
             // Position in bottom right corner, below player ship
             const iconSize = 0.15; // Scale for life icons (smaller than player)
             const iconSpacing = 25; // Horizontal spacing between icons
             const startX = config.width - (unusedLives * iconSpacing) - 10; // Start from right edge
             const iconY = config.height - 15; // Bottom of screen (below player at height - 60)
-            
+
             for (let i = 0; i < unusedLives; i++) {
                 const icon = this.add.image(startX + (i * iconSpacing), iconY, 'ship');
                 icon.setScale(iconSize);
@@ -162,35 +185,46 @@
         function preload() {
             // Load the player ship image
             this.load.image('ship', './assets/player.png');
-                this.load.image('deathstar', './assets/deathstar.png');
-                this.load.image('enemy1', './assets/enemy1.png');
-                this.load.image('enemy2', './assets/enemy2.png');
-            
-                // Add load error handling
-                this.load.on('loaderror', function(file) {
-                    console.error('Error loading:', file.src);
-                });
+            this.load.image('deathstar', './assets/deathstar.png');
+            this.load.image('enemy1', './assets/enemy1.png');
+            this.load.image('enemy2', './assets/enemy2.png');
+
+            // Add load error handling
+            this.load.on('loaderror', function (file) {
+                console.error('Error loading:', file.src);
+            });
         }
 
         function create() {
             // Create starfield
             stars = this.add.group();
-            
-            // Create initial stars
-            for (let i = 0; i < 100; i++) {
-                const x = Phaser.Math.Between(0, config.width);
-                const y = Phaser.Math.Between(0, config.height);
-                const star = this.add.circle(x, y, Phaser.Math.FloatBetween(0.5, 1.5), 0xffffff);
-                star.alpha = Phaser.Math.FloatBetween(0.3, 1);
-                star.speed = Phaser.Math.FloatBetween(0.5, 2);
-                stars.add(star);
-            }
+
+            // Create starfield with multiple layers for parallax
+            stars = this.add.group();
+
+            const createStarLayer = (count, minSpeed, maxSpeed, minAlpha, maxAlpha, minScale, maxScale) => {
+                for (let i = 0; i < count; i++) {
+                    const x = Phaser.Math.Between(0, config.width);
+                    const y = Phaser.Math.Between(0, config.height);
+                    const star = this.add.circle(x, y, Phaser.Math.FloatBetween(minScale, maxScale), 0xffffff);
+                    star.alpha = Phaser.Math.FloatBetween(minAlpha, maxAlpha);
+                    star.speed = Phaser.Math.FloatBetween(minSpeed, maxSpeed);
+                    stars.add(star);
+                }
+            };
+
+            createStarLayer(50, 0.2, 0.5, 0.05, 0.15, 0.05, 0.15); // Distant stars (very faint/small)
+            createStarLayer(50, 0.5, 1.5, 0.1, 0.2, 0.15, 0.3); // Mid-distance stars
+            createStarLayer(20, 2, 4, 0.2, 0.3, 0.3, 0.4);     // Close stars (still small)
 
             // Create player ship (moved up to make room for lives icons)
             player = this.physics.add.sprite(config.width / 2, config.height - 60, 'ship');
             player.setCollideWorldBounds(true);
             // slightly smaller player so formation fits
             player.setScale(0.35);
+            // Add drag for smoother movement
+            player.setDrag(1000);
+            player.setMaxVelocity(400);
 
             // Create bullet group
             bullets = this.physics.add.group();
@@ -203,6 +237,25 @@
             g.fillStyle(0xffffff, 1);
             g.fillRect(0, 0, 4, 4);
             g.generateTexture('spark', 4, 4);
+
+            // Create a glowing bullet texture
+            g.clear();
+            g.fillStyle(0x00ffff, 1);
+            g.fillCircle(4, 4, 4);
+            g.generateTexture('bullet', 8, 8);
+
+            // Create a glowing enemy bullet texture
+            g.clear();
+            g.fillStyle(0xff0000, 1);
+            g.fillCircle(4, 4, 4);
+            g.generateTexture('enemyBullet', 8, 8);
+
+            // Create shockwave texture
+            g.clear();
+            g.lineStyle(2, 0xffffff);
+            g.strokeCircle(10, 10, 10);
+            g.generateTexture('shockwave', 20, 20);
+
             g.destroy();
 
             // Particle manager and emitter config (we'll call explode on it)
@@ -219,178 +272,190 @@
             // We don't want a continuous emitter, so stop it; we'll use explode
             explosionEmitter.on = false;
 
-                // Create Death Star (smaller so it doesn't overlap formation)
-                deathStar = this.add.image(config.width / 2, 80, 'deathstar');
-                deathStar.setScale(0.25);
+            // Create Death Star (smaller so it doesn't overlap formation)
+            deathStar = this.add.image(config.width / 2, 80, 'deathstar');
+            deathStar.setScale(0.25);
 
-                // Create enemy grid (tighter spacing and smaller sprites)
-                enemies = this.physics.add.group();
+            // Create enemy grid (tighter spacing and smaller sprites)
+            enemies = this.physics.add.group();
 
-                // Create formations of enemies
-                // Use tighter spacing: 40px horizontal, 36px vertical
-                const startX = (config.width - (GRID_COLS * 40)) / 2 + 20;
-                const startY = 200;
+            // Create formations of enemies
+            // Use tighter spacing: 40px horizontal, 36px vertical
+            const startX = (config.width - (GRID_COLS * 40)) / 2 + 20;
+            const startY = 200;
 
-                // Create rows of enemies
-                // Add a small extra spacing between the two bottom rows (both are enemy1)
-                const extraBottomRowSpacing = 12; // px
-                for (let row = 0; row < GRID_ROWS; row++) {
-                    enemyRows[row] = [];
-                    for (let col = 0; col < GRID_COLS; col++) {
-                        const x = startX + col * 40;
-                        // Only push the last row (row index 3) down to create spacing BETWEEN row 2 and 3
-                        const y = startY + row * 36 + (row >= 3 ? extraBottomRowSpacing : 0);
+            // Create rows of enemies
+            // Add a small extra spacing between the two bottom rows (both are enemy1)
+            const extraBottomRowSpacing = 12; // px
+            for (let row = 0; row < GRID_ROWS; row++) {
+                enemyRows[row] = [];
+                for (let col = 0; col < GRID_COLS; col++) {
+                    const x = startX + col * 40;
+                    // Only push the last row (row index 3) down to create spacing BETWEEN row 2 and 3
+                    const y = startY + row * 36 + (row >= 3 ? extraBottomRowSpacing : 0);
 
-                        // Use different enemy types: put 'enemy1' in the bottom 2 rows
-                        const enemyType = row >= 2 ? 'enemy1' : 'enemy2';
-                        const enemy = enemies.create(x, y, enemyType);
-                        // Increase enemy scale to 0.35 per request
-                        enemy.setScale(0.35);
-                        // store spawn info so we can respawn later
-                        enemy.spawnX = x;
-                        enemy.spawnY = y;
-                        enemy.origSpawnX = x;
-                        enemy.spawnType = enemyType;
-                        enemy.spawnRow = row;
-                        enemy.spawnCol = col;
-                        // store row index for reference
-                        enemy.row = row;
-                        enemyRows[row].push(enemy);
-                    }
-                    // alternate initial directions per row
-                    rowDirections[row] = (row % 2 === 0) ? 1 : -1;
-                    // init offset for row
-                    rowOffsets[row] = 0;
+                    // Use different enemy types: put 'enemy1' in the bottom 2 rows
+                    const enemyType = row >= 2 ? 'enemy1' : 'enemy2';
+                    const enemy = enemies.create(x, y, enemyType);
+                    // Increase enemy scale to 0.35 per request
+                    enemy.setScale(0.35);
+                    // store spawn info so we can respawn later
+                    enemy.spawnX = x;
+                    enemy.spawnY = y;
+                    enemy.origSpawnX = x;
+                    enemy.spawnType = enemyType;
+                    enemy.spawnRow = row;
+                    enemy.spawnCol = col;
+                    // store row index for reference
+                    enemy.row = row;
+                    enemyRows[row].push(enemy);
+                }
+                // alternate initial directions per row
+                rowDirections[row] = (row % 2 === 0) ? 1 : -1;
+                // init offset for row
+                rowOffsets[row] = 0;
+            }
+
+            // Score display
+            scoreText = this.add.text(10, 10, 'Score: 0', { fontFamily: 'IBM Plex Mono, monospace', fontSize: '18px', fill: '#ffffff' });
+
+            // Lives display - using ship icons
+            livesIcons = this.add.group();
+            updateLivesDisplay.call(this);
+
+            // Add overlap collider between bullets and enemies
+            this.physics.add.overlap(bullets, enemies, function (bullet, enemy) {
+                // If enemy is invulnerable, just destroy the bullet
+                if (enemy.isInvulnerable) {
+                    if (bullet && bullet.destroy) bullet.destroy();
+                    return;
+                }
+                // destroy bullet
+                if (bullet && bullet.destroy) bullet.destroy();
+
+                // award score based on enemy type
+                const val = enemy && enemy.spawnType ? (enemyValues[enemy.spawnType] || 0) : 0;
+                score += val;
+                if (scoreText) scoreText.setText('Score: ' + score);
+
+                // spawn explosion particles that fall toward the player a bit
+                const parts = this.add.particles('spark');
+                const em = parts.createEmitter({
+                    speed: { min: 50, max: 200 },
+                    angle: { min: 0, max: 360 },
+                    gravityY: 300,
+                    lifespan: { min: 500, max: 1000 },
+                    scale: { start: 1.5, end: 0 },
+                    quantity: 20,
+                    blendMode: 'ADD',
+                    tint: [0xffaa00, 0xff0000, 0xffffff]
+                });
+                // explode creates the initial burst; gravity makes particles trail downward
+                em.explode(30, enemy.x, enemy.y);
+
+                // Create shockwave
+                const shockwave = this.add.image(enemy.x, enemy.y, 'shockwave');
+                shockwave.setScale(0.1);
+                shockwave.setAlpha(1);
+                this.tweens.add({
+                    targets: shockwave,
+                    scale: 3,
+                    alpha: 0,
+                    duration: 300,
+                    onComplete: () => shockwave.destroy()
+                });
+
+                // Play explosion sound
+                try { createExplosionSound(); } catch (e) { }
+
+                // destroy this temporary particle manager after particles finish
+                this.time.delayedCall(1000, function () { parts.destroy(); }, [], this);
+
+                // store spawn info before destroying
+                // Use immutable origSpawnX (original grid X) to avoid drift on multiple respawns
+                const origGridX = (enemy.origSpawnX !== undefined) ? enemy.origSpawnX : enemy.spawnX;
+                const spawnCol = enemy.spawnCol;
+                const spawnY = enemy.spawnY;
+                const spawnType = enemy.spawnType;
+                const spawnRow = enemy.spawnRow;
+
+                // remove enemy from its row array so it no longer moves
+                if (enemy.row !== undefined && enemyRows[enemy.row]) {
+                    const idx = enemyRows[enemy.row].indexOf(enemy);
+                    if (idx !== -1) enemyRows[enemy.row].splice(idx, 1);
                 }
 
-                // Score display
-                scoreText = this.add.text(10, 10, 'Score: 0', { fontFamily: 'IBM Plex Mono, monospace', fontSize: '18px', fill: '#ffffff' });
+                // destroy the enemy
+                if (enemy && enemy.destroy) enemy.destroy();
 
-                // Lives display - using ship icons
-                livesIcons = this.add.group();
-                updateLivesDisplay.call(this);
+                // schedule respawn after delay
+                if (spawnType) {
+                    this.time.delayedCall(enemyRespawnDelay, function () {
+                        // compute final X using the immutable original grid X plus current row offset
+                        const offset = (rowOffsets[spawnRow] || 0);
+                        const finalX = (typeof (origGridX) === 'number') ? (origGridX + offset) : origGridX;
+                        const recreated = enemies.create(finalX, spawnY, spawnType);
+                        recreated.setScale(0.35);
+                        // Set initial alpha to 0 for fade-in
+                        recreated.alpha = 0;
 
-                // Add overlap collider between bullets and enemies
-                this.physics.add.overlap(bullets, enemies, function(bullet, enemy) {
-                    // If enemy is invulnerable, just destroy the bullet
-                    if (enemy.isInvulnerable) {
-                        if (bullet && bullet.destroy) bullet.destroy();
-                        return;
-                    }
-                    // destroy bullet
-                    if (bullet && bullet.destroy) bullet.destroy();
+                        // Create shield particle effect
+                        const shield = this.add.particles('spark');
+                        const shieldEmitter = shield.createEmitter({
+                            x: finalX,
+                            y: spawnY,
+                            scale: { start: 0.5, end: 0 },
+                            speed: 100,
+                            blendMode: 'ADD',
+                            lifespan: 500,
+                            quantity: 2,
+                            frequency: 50,
+                            tint: 0x00ffff  // cyan color
+                        });
 
-                    // award score based on enemy type
-                    const val = enemy && enemy.spawnType ? (enemyValues[enemy.spawnType] || 0) : 0;
-                    score += val;
-                    if (scoreText) scoreText.setText('Score: ' + score);
+                        // Make enemy temporarily invulnerable
+                        recreated.isInvulnerable = true;
 
-                    // spawn explosion particles that fall toward the player a bit
-                    const parts = this.add.particles('spark');
-                    const em = parts.createEmitter({
-                        speedX: { min: -200, max: 200 },
-                        // initial upward velocity so particles arc and then fall
-                        speedY: { min: -300, max: -100 },
-                        gravityY: 600,
-                        lifespan: { min: 700, max: 1400 },
-                        scale: { start: 1, end: 0 },
-                        quantity: 20,
-                        blendMode: 'ADD'
-                    });
-                    // explode creates the initial burst; gravity makes particles trail downward
-                    em.explode(20, enemy.x, enemy.y);
-                    
-                    // Play explosion sound
-                    try { createExplosionSound(); } catch(e) {}
-                    
-                    // destroy this temporary particle manager after particles finish
-                    this.time.delayedCall(900, function() { parts.destroy(); }, [], this);
+                        // Fade in the enemy (faster animation)
+                        this.tweens.add({
+                            targets: recreated,
+                            alpha: 1,
+                            duration: 400, // Reduced from 1000ms
+                            ease: 'Linear'
+                        });
 
-                    // store spawn info before destroying
-                    // Use immutable origSpawnX (original grid X) to avoid drift on multiple respawns
-                    const origGridX = (enemy.origSpawnX !== undefined) ? enemy.origSpawnX : enemy.spawnX;
-                    const spawnCol = enemy.spawnCol;
-                    const spawnY = enemy.spawnY;
-                    const spawnType = enemy.spawnType;
-                    const spawnRow = enemy.spawnRow;
-
-                    // remove enemy from its row array so it no longer moves
-                    if (enemy.row !== undefined && enemyRows[enemy.row]) {
-                        const idx = enemyRows[enemy.row].indexOf(enemy);
-                        if (idx !== -1) enemyRows[enemy.row].splice(idx, 1);
-                    }
-
-                    // destroy the enemy
-                    if (enemy && enemy.destroy) enemy.destroy();
-
-                    // schedule respawn after delay
-                    if (spawnType) {
-                        this.time.delayedCall(enemyRespawnDelay, function() {
-                            // compute final X using the immutable original grid X plus current row offset
-                            const offset = (rowOffsets[spawnRow] || 0);
-                            const finalX = (typeof (origGridX) === 'number') ? (origGridX + offset) : origGridX;
-                            const recreated = enemies.create(finalX, spawnY, spawnType);
-                            recreated.setScale(0.35);
-                            // Set initial alpha to 0 for fade-in
-                            recreated.alpha = 0;
-
-                            // Create shield particle effect
-                            const shield = this.add.particles('spark');
-                            const shieldEmitter = shield.createEmitter({
-                                x: finalX,
-                                y: spawnY,
-                                scale: { start: 0.5, end: 0 },
-                                speed: 100,
-                                blendMode: 'ADD',
-                                lifespan: 500,
-                                quantity: 2,
-                                frequency: 50,
-                                tint: 0x00ffff  // cyan color
-                            });
-                            
-                            // Make enemy temporarily invulnerable
-                            recreated.isInvulnerable = true;
-                            
-                            // Fade in the enemy
-                            this.tweens.add({
-                                targets: recreated,
-                                alpha: 1,
-                                duration: 1000,
-                                ease: 'Linear'
-                            });
-
-                            // Remove invulnerability and shield after 2 seconds
-                            this.time.delayedCall(2000, function() {
-                                recreated.isInvulnerable = false;
-                                shield.destroy();
-                            }, [], this);
-
-                            // Make shield follow the enemy
-                            shield.setDepth(1);
-                            shieldEmitter.startFollow(recreated);
-
-                            // preserve original grid X for future respawns (immutable)
-                            recreated.origSpawnX = origGridX;
-                            recreated.spawnX = finalX;
-                            recreated.spawnY = spawnY;
-                            recreated.spawnType = spawnType;
-                            recreated.spawnRow = spawnRow;
-                            recreated.spawnCol = spawnCol;
-                            recreated.row = spawnRow;
-                            if (!enemyRows[spawnRow]) enemyRows[spawnRow] = [];
-                            enemyRows[spawnRow].push(recreated);
+                        // Remove invulnerability and shield after 2 seconds
+                        this.time.delayedCall(2000, function () {
+                            recreated.isInvulnerable = false;
+                            shield.destroy();
                         }, [], this);
-                    }
-                }, null, this);
+
+                        // Make shield follow the enemy
+                        shield.setDepth(1);
+                        shieldEmitter.startFollow(recreated);
+
+                        // preserve original grid X for future respawns (immutable)
+                        recreated.origSpawnX = origGridX;
+                        recreated.spawnX = finalX;
+                        recreated.spawnY = spawnY;
+                        recreated.spawnType = spawnType;
+                        recreated.spawnRow = spawnRow;
+                        recreated.spawnCol = spawnCol;
+                        recreated.row = spawnRow;
+                        if (!enemyRows[spawnRow]) enemyRows[spawnRow] = [];
+                        enemyRows[spawnRow].push(recreated);
+                    }, [], this);
+                }
+            }, null, this);
 
             // Add overlap collider between enemy bullets and player
-            playerEnemyBulletCollider = this.physics.add.overlap(enemyBullets, player, function(enemyBullet, playerSprite) {
+            playerEnemyBulletCollider = this.physics.add.overlap(enemyBullets, player, function (enemyBullet, playerSprite) {
                 // Ignore hit if player is invulnerable, respawning, or game is over
                 if (playerInvulnerable || playerRespawning || gameOver) {
                     if (enemyBullet && enemyBullet.destroy) enemyBullet.destroy();
                     return;
                 }
-                
+
                 // Additional safety check - make sure player exists and is active
                 if (!playerSprite || !playerSprite.active || !player || !player.active) {
                     if (enemyBullet && enemyBullet.destroy) enemyBullet.destroy();
@@ -410,22 +475,26 @@
                 // Trigger player explosion using particle system
                 const playerParts = this.add.particles('spark');
                 const playerEm = playerParts.createEmitter({
-                    speedX: { min: -200, max: 200 },
-                    speedY: { min: -300, max: -100 },
-                    gravityY: 600,
-                    lifespan: { min: 700, max: 1400 },
-                    scale: { start: 1, end: 0 },
-                    quantity: 20,
-                    blendMode: 'ADD'
+                    speed: { min: 100, max: 300 },
+                    angle: { min: 0, max: 360 },
+                    gravityY: 0,
+                    lifespan: { min: 800, max: 1500 },
+                    scale: { start: 2, end: 0 },
+                    quantity: 50,
+                    blendMode: 'ADD',
+                    tint: [0x00ffff, 0xffffff]
                 });
                 // Explode particles at player position
-                playerEm.explode(20, playerSprite.x, playerSprite.y);
-                
+                playerEm.explode(50, playerSprite.x, playerSprite.y);
+
+                // Screen shake
+                this.cameras.main.shake(300, 0.02);
+
                 // Play explosion sound
-                try { createExplosionSound(); } catch(e) {}
-                
+                try { createExplosionSound(); } catch (e) { }
+
                 // Destroy particle manager after particles finish
-                this.time.delayedCall(1400, function() { playerParts.destroy(); }, [], this);
+                this.time.delayedCall(1500, function () { playerParts.destroy(); }, [], this);
 
                 // Destroy player sprite - will be recreated on respawn
                 if (playerSprite) {
@@ -443,10 +512,10 @@
                 if (lives > 0) {
                     // Set respawning flag to prevent hits during respawn
                     playerRespawning = true;
-                    
+
                     // Wait 1 second before respawning (ship invisible for 1 second)
                     const scene = this;
-                    this.time.delayedCall(1000, function() {
+                    this.time.delayedCall(1000, function () {
                         if (scene && !gameOver) {
                             respawnPlayer.call(scene);
                         }
@@ -468,23 +537,25 @@
                 this.physics.world.removeCollider(playerEnemyBulletCollider);
                 playerEnemyBulletCollider = null;
             }
-            
+
             // Create new player at starting position (moved up to make room for lives icons)
             player = this.physics.add.sprite(config.width / 2, config.height - 60, 'ship');
             player.setCollideWorldBounds(true);
             player.setScale(0.35);
+            player.setDrag(1000);
+            player.setMaxVelocity(400);
             player.setVelocity(0, 0);
-            
+
             // Player is now respawning (still in invulnerable phase)
             playerRespawning = true;
-            
+
             // Set invulnerable flag and disable firing
             playerInvulnerable = true;
-            
+
             // Create pulsing effect for 1 second using tween
             // Start with player visible but pulsing
             player.setAlpha(1);
-            
+
             // Create a pulsing tween that repeats
             const pulseTween = this.tweens.add({
                 targets: player,
@@ -492,20 +563,20 @@
                 duration: 200, // 200ms per pulse cycle
                 repeat: 4, // 5 total pulses (0.3->1->0.3->1->0.3->1->0.3->1->0.3->1) = ~1 second
                 yoyo: true,
-                onComplete: function() {
+                onComplete: function () {
                     // Pulsing complete - make fully visible and enable gameplay
                     player.setAlpha(1);
                     playerInvulnerable = false;
                     playerRespawning = false; // Respawning phase complete
-                    
+
                     // NOW re-add overlap collider after respawn is complete
-                    playerEnemyBulletCollider = this.physics.add.overlap(enemyBullets, player, function(enemyBullet, playerSprite) {
+                    playerEnemyBulletCollider = this.physics.add.overlap(enemyBullets, player, function (enemyBullet, playerSprite) {
                         // Ignore hit if player is invulnerable, respawning, or game is over
                         if (playerInvulnerable || playerRespawning || gameOver) {
                             if (enemyBullet && enemyBullet.destroy) enemyBullet.destroy();
                             return;
                         }
-                        
+
                         // Additional safety check - make sure player exists and is active
                         if (!playerSprite || !playerSprite.active || !player || !player.active) {
                             if (enemyBullet && enemyBullet.destroy) enemyBullet.destroy();
@@ -525,22 +596,26 @@
                         // Trigger player explosion using particle system
                         const playerParts = this.add.particles('spark');
                         const playerEm = playerParts.createEmitter({
-                            speedX: { min: -200, max: 200 },
-                            speedY: { min: -300, max: -100 },
-                            gravityY: 600,
-                            lifespan: { min: 700, max: 1400 },
-                            scale: { start: 1, end: 0 },
-                            quantity: 20,
-                            blendMode: 'ADD'
+                            speed: { min: 100, max: 300 },
+                            angle: { min: 0, max: 360 },
+                            gravityY: 0,
+                            lifespan: { min: 800, max: 1500 },
+                            scale: { start: 2, end: 0 },
+                            quantity: 50,
+                            blendMode: 'ADD',
+                            tint: [0x00ffff, 0xffffff]
                         });
                         // Explode particles at player position
-                        playerEm.explode(20, playerSprite.x, playerSprite.y);
-                        
+                        playerEm.explode(50, playerSprite.x, playerSprite.y);
+
+                        // Screen shake
+                        this.cameras.main.shake(300, 0.02);
+
                         // Play explosion sound
-                        try { createExplosionSound(); } catch(e) {}
-                        
+                        try { createExplosionSound(); } catch (e) { }
+
                         // Destroy particle manager after particles finish
-                        this.time.delayedCall(1400, function() { playerParts.destroy(); }, [], this);
+                        this.time.delayedCall(1500, function () { playerParts.destroy(); }, [], this);
 
                         // Destroy player sprite - will be recreated on respawn
                         if (playerSprite) {
@@ -558,10 +633,10 @@
                         if (lives > 0) {
                             // Set respawning flag to prevent hits during respawn
                             playerRespawning = true;
-                            
+
                             // Wait 1 second before respawning (ship invisible for 1 second)
                             const scene = this;
-                            this.time.delayedCall(1000, function() {
+                            this.time.delayedCall(1000, function () {
                                 if (scene && !gameOver) {
                                     respawnPlayer.call(scene);
                                 }
@@ -579,26 +654,26 @@
         function showGameOver() {
             // Stop enemy firing
             nextEnemyFireTime = Infinity;
-            
+
             // Dim the enemy grid so Game Over message is legible
             enemies.children.entries.forEach(enemy => {
                 if (enemy && enemy.active) {
                     enemy.setAlpha(0.15); // Dim significantly but still visible
                 }
             });
-            
+
             // Also dim the Death Star
             if (deathStar) {
                 deathStar.setAlpha(0.15);
             }
-            
+
             // Create game over text (positioned just below enemy grid)
             // Enemy grid bottom is at approximately y=340, so place text at y=360
             const gameOverText = this.add.text(
                 config.width / 2,
                 360,
                 'GAME OVER',
-                { 
+                {
                     fontFamily: 'IBM Plex Mono, monospace',
                     fontSize: '32px',
                     fill: '#ff0000',
@@ -606,13 +681,13 @@
                 }
             );
             gameOverText.setOrigin(0.5);
-            
+
             // Show final score (below game over text)
             const finalScoreText = this.add.text(
                 config.width / 2,
                 400,
-                'Final Score: ' + score,
-                { 
+                'Final Score: ' + score + '\nPress ENTER to Restart',
+                {
                     fontFamily: 'IBM Plex Mono, monospace',
                     fontSize: '20px',
                     fill: '#ffffff',
@@ -620,13 +695,29 @@
                 }
             );
             finalScoreText.setOrigin(0.5);
+
+            // Add restart key
+            this.input.keyboard.once('keydown-ENTER', () => {
+                this.scene.restart();
+                // Reset global variables
+                score = 0;
+                lives = 3;
+                gameOver = false;
+                playerInvulnerable = false;
+                playerRespawning = false;
+                stepTimer = 0;
+                rowOffsets = [];
+                rowDirections = [];
+                enemyRows = [];
+                nextEnemyFireTime = 0;
+            });
         }
 
         function update(time, delta) {
             // Move stars down
             stars.children.entries.forEach(star => {
                 star.y += star.speed;
-                
+
                 // Reset star to top when it goes off screen
                 if (star.y > config.height) {
                     star.y = 0;
@@ -637,29 +728,45 @@
             // Player movement (only if player exists, is active, and game is not over)
             if (!gameOver && player && player.active) {
                 if (cursors.left.isDown) {
-                    player.setVelocityX(-400);
+                    player.setAccelerationX(-1200);
                 } else if (cursors.right.isDown) {
-                    player.setVelocityX(400);
+                    player.setAccelerationX(1200);
                 } else {
-                    player.setVelocityX(0);
+                    player.setAccelerationX(0);
                 }
 
                 // Firing logic (only if not invulnerable)
                 if (!playerInvulnerable && cursors.space.isDown && time > lastFired) {
-                    const bullet = this.add.rectangle(player.x, player.y - 20, 3, 15, 0xffffff);
+                    const bullet = this.physics.add.image(player.x, player.y - 20, 'bullet');
                     bullets.add(bullet);
-                    this.physics.add.existing(bullet);
-                    bullet.body.setVelocityY(-600);
-                    
+                    bullet.setVelocityY(-600);
+
+                    // Add a trail effect
+                    const trailParticles = this.add.particles('spark');
+                    const trailEmitter = trailParticles.createEmitter({
+                        speed: 10,
+                        scale: { start: 0.5, end: 0 },
+                        blendMode: 'ADD',
+                        lifespan: 100,
+                        tint: 0x00ffff,
+                        follow: bullet
+                    });
+
+                    // Clean up trail when bullet is destroyed
+                    bullet.on('destroy', () => {
+                        trailEmitter.stop();
+                        this.time.delayedCall(200, () => trailParticles.destroy());
+                    });
+
                     // Play shoot sound
-                    try { createShootSound(); } catch(e) {}
-                    
+                    try { createShootSound(); } catch (e) { }
+
                     lastFired = time + 150; // Fire rate cooldown (150ms)
                 }
             }
 
             // Cleanup bullets
-            bullets.children.each(function(bullet) {
+            bullets.children.each(function (bullet) {
                 if (bullet.y < -10) {
                     bullet.destroy();
                 }
@@ -679,9 +786,18 @@
                         // apply offset to each enemy in the row (keep them aligned to origSpawnX + offset)
                         enemyRows[r].forEach(enemy => {
                             if (!enemy || !enemy.active) return;
-                            enemy.x = enemy.origSpawnX + rowOffsets[r];
+
+                            // Tween to new position for smoothness
+                            this.tweens.add({
+                                targets: enemy,
+                                x: enemy.origSpawnX + rowOffsets[r],
+                                duration: 200,
+                                ease: 'Power1'
+                            });
+
+                            // Update physics body after tween (approximate)
                             if (enemy.body && enemy.body.reset) {
-                                enemy.body.reset(enemy.x, enemy.y);
+                                enemy.body.reset(enemy.origSpawnX + rowOffsets[r], enemy.y);
                             }
                         });
 
@@ -702,8 +818,12 @@
                             rowOffsets[r] += correction;
                             enemyRows[r].forEach(enemy => {
                                 if (!enemy || !enemy.active) return;
-                                enemy.x = enemy.origSpawnX + rowOffsets[r];
-                                if (enemy.body && enemy.body.reset) enemy.body.reset(enemy.x, enemy.y);
+                                this.tweens.add({
+                                    targets: enemy,
+                                    x: enemy.origSpawnX + rowOffsets[r],
+                                    duration: 200,
+                                    ease: 'Power1'
+                                });
                             });
                             rowDirections[r] = 1;
                         }
@@ -714,8 +834,12 @@
                             rowOffsets[r] += correction;
                             enemyRows[r].forEach(enemy => {
                                 if (!enemy || !enemy.active) return;
-                                enemy.x = enemy.origSpawnX + rowOffsets[r];
-                                if (enemy.body && enemy.body.reset) enemy.body.reset(enemy.x, enemy.y);
+                                this.tweens.add({
+                                    targets: enemy,
+                                    x: enemy.origSpawnX + rowOffsets[r],
+                                    duration: 200,
+                                    ease: 'Power1'
+                                });
                             });
                             rowDirections[r] = -1;
                         }
@@ -730,7 +854,7 @@
                 if (nextEnemyFireTime === 0) {
                     nextEnemyFireTime = time + Phaser.Math.Between(800, 1200);
                 }
-                
+
                 // Check if it's time to fire
                 if (time >= nextEnemyFireTime) {
                     // Get active enemies from bottom row
@@ -740,10 +864,9 @@
                         const firingEnemy = Phaser.Utils.Array.GetRandom(activeBottomEnemies);
                         if (firingEnemy) {
                             // Create enemy bullet moving downward
-                            const enemyBullet = this.add.rectangle(firingEnemy.x, firingEnemy.y + 20, 3, 15, 0xff0000); // Red color to differentiate
+                            const enemyBullet = this.physics.add.image(firingEnemy.x, firingEnemy.y + 20, 'enemyBullet');
                             enemyBullets.add(enemyBullet);
-                            this.physics.add.existing(enemyBullet);
-                            enemyBullet.body.setVelocityY(400); // Move downward
+                            enemyBullet.setVelocityY(400); // Move downward
                             lastEnemyFired = time;
                             // Schedule next fire with random interval between 800-1200ms
                             nextEnemyFireTime = time + Phaser.Math.Between(800, 1200);
@@ -753,7 +876,7 @@
             }
 
             // Cleanup enemy bullets that go off-screen
-            enemyBullets.children.each(function(enemyBullet) {
+            enemyBullets.children.each(function (enemyBullet) {
                 if (enemyBullet.y > config.height + 10) {
                     enemyBullet.destroy();
                 }
@@ -761,4 +884,5 @@
         }
     </script>
 </body>
+
 </html>
