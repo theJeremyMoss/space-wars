@@ -348,12 +348,18 @@
             // Score display
             scoreText = this.add.text(10, 10, 'Score: 0', { fontFamily: 'IBM Plex Mono, monospace', fontSize: '18px', fill: '#ffffff' });
 
+            // Debug display
+            window.debugText = this.add.text(10, 40, '', { fontFamily: 'IBM Plex Mono, monospace', fontSize: '12px', fill: '#00ff00' });
+
             // Lives display - using ship icons
             livesIcons = this.add.group();
             updateLivesDisplay.call(this);
 
             // Add overlap collider between bullets and enemies
             this.physics.add.overlap(bullets, enemies, function (bullet, enemy) {
+                // Safeguard: Ensure we never destroy the Death Star here
+                if (enemy === deathStar) return;
+
                 // If enemy is invulnerable, just destroy the bullet
                 if (enemy.isInvulnerable) {
                     if (bullet && bullet.destroy) bullet.destroy();
@@ -1050,6 +1056,17 @@
                         deathStarHealth = 3;
                     }
                 });
+            }
+
+            // Update debug text
+            if (window.debugText) {
+                window.debugText.setText(
+                    `Boss Health: ${deathStarHealth}\n` +
+                    `Vulnerable: ${isDeathStarVulnerable}\n` +
+                    `Next Boss: ${nextBossScore}\n` +
+                    `Boss Visible: ${deathStar ? deathStar.visible : 'N/A'}\n` +
+                    `Boss Active: ${deathStar ? deathStar.active : 'N/A'}`
+                );
             }
         }
     </script>
