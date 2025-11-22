@@ -66,6 +66,13 @@
         let nextEnemyFireTime = 0;
         let enemies;
         let deathStar;
+        let deathStarHealth = 3;
+        let isDeathStarVulnerable = false;
+        let deathStarDefeated = false;
+        let deathStarVulnerabilityTimer = null;
+        let deathStarTween = null;
+        let lastDeathStarHit = 0; // Cooldown to prevent one-shot kills
+        let nextBossScore = 2000; // Score threshold for next boss battle
         const GRID_ROWS = 4;
         const GRID_COLS = 8;
 
@@ -202,6 +209,14 @@
             // Create starfield with multiple layers for parallax
             stars = this.add.group();
 
+            // Explicitly reset Death Star state on creation to prevent stale state bugs
+            deathStarHealth = 3;
+            isDeathStarVulnerable = false;
+            deathStarDefeated = false;
+            nextBossScore = 2000;
+            if (deathStarVulnerabilityTimer) deathStarVulnerabilityTimer.remove();
+            if (deathStarTween) deathStarTween.stop();
+
             const createStarLayer = (count, minSpeed, maxSpeed, minAlpha, maxAlpha, minScale, maxScale) => {
                 for (let i = 0; i < count; i++) {
                     const x = Phaser.Math.Between(0, config.width);
@@ -223,7 +238,7 @@
             // slightly smaller player so formation fits
             player.setScale(0.35);
             // Add drag for smoother movement
-            player.setDrag(1000);
+            player.setDrag(3000); // Increased from 1000
             player.setMaxVelocity(400);
 
             // Create bullet group
@@ -273,8 +288,22 @@
             explosionEmitter.on = false;
 
             // Create Death Star (smaller so it doesn't overlap formation)
-            deathStar = this.add.image(config.width / 2, 80, 'deathstar');
+            // Use physics image so we can check for overlaps
+            deathStar = this.physics.add.image(config.width / 2, 80, 'deathstar');
             deathStar.setScale(0.25);
+            deathStar.setImmovable(true);
+            // Narrow hitbox: 20% width, 100% height, centered
+            // Note: setSize works on the original texture size, so we need to account for that
+            // But in Phaser 3 Arcade, setSize sets the body size in pixels (unscaled if not specified, but body scales with sprite)
+            // Let's set it to a narrow strip in the middle.
+            // The sprite is scaled to 0.25. 
+            // We can just set the body size directly relative to the frame.
+            // Assuming texture is roughly square.
+            deathStar.body.setSize(deathStar.width * 0.15, deathStar.height * 0.8);
+            deathStar.body.setOffset(deathStar.width * 0.425, deathStar.height * 0.1);
+
+            // Initially not vulnerable
+            deathStar.setTint(0x888888); // Dim it slightly to show invulnerability
 
             // Create enemy grid (tighter spacing and smaller sprites)
             enemies = this.physics.add.group();
@@ -527,6 +556,100 @@
                 }
             }, null, this);
 
+            // Add overlap collider between bullets and Death Star
+            this.physics.add.overlap(bullets, deathStar, function (bullet, ds) {
+                // Safety check: if bullet is already destroyed/inactive, ignore
+                if (!bullet || !bullet.active) return;
+
+                // Debugging
+                // console.log('Hit Death Star. Vuln:', isDeathStarVulnerable, 'Score:', score, 'Health:', deathStarHealth);
+
+                // Only damage if vulnerable AND score is high enough AND cooldown passed
+                const now = this.time.now;
+                // Use a slightly lower threshold for the collision check to account for timing differences, 
+                // but strictly check isDeathStarVulnerable which is the source of truth.
+                if (isDeathStarVulnerable && !deathStarDefeated && score >= 2000 && now > lastDeathStarHit + 500) {
+                    // Destroy bullet immediately
+                    bullet.destroy();
+
+                    deathStarHealth--;
+                    lastDeathStarHit = now;
+
+                    // Flash red
+                    ds.setTint(0xff0000);
+                    this.time.delayedCall(100, () => {
+                        if (ds.active && isDeathStarVulnerable) ds.setTint(0xffaaaa); // Back to pulsing color
+                    });
+
+                    // Play hit sound
+                    try { createExplosionSound(); } catch (e) { }
+
+                    if (deathStarHealth <= 0) {
+                        // Destroy Death Star
+                        deathStarDefeated = true;
+                        isDeathStarVulnerable = false;
+                        if (deathStarTween) deathStarTween.stop();
+                        if (deathStarVulnerabilityTimer) deathStarVulnerabilityTimer.remove();
+
+                        // Massive explosion
+                        const bigExplosion = this.add.particles('spark');
+                        const bigEm = bigExplosion.createEmitter({
+                            speed: { min: 200, max: 600 },
+                            angle: { min: 0, max: 360 },
+                            gravityY: 0,
+                            lifespan: { min: 1000, max: 2000 },
+                            scale: { start: 4, end: 0 },
+                            quantity: 200,
+                            blendMode: 'ADD',
+                            tint: [0xffaa00, 0xff0000, 0xffffff]
+                        });
+                        bigEm.explode(200, ds.x, ds.y);
+
+                        // Screen shake
+                        this.cameras.main.shake(1000, 0.05);
+
+                        // Hide Death Star
+                        ds.setVisible(false);
+                        ds.body.enable = false;
+
+                        // Bonus points
+                        score += 5000;
+                        if (scoreText) scoreText.setText('Score: ' + score);
+
+                        // Ring Explosion Effect (Gyruss style)
+                        const ringColors = [0xff0000, 0xffaa00, 0xffff00, 0xffffff];
+                        const ringSpeeds = [100, 200, 300, 400];
+
+                        ringSpeeds.forEach((speed, i) => {
+                            const ringParticles = this.add.particles('spark');
+                            const ringEmitter = ringParticles.createEmitter({
+                                speed: speed,
+                                angle: { min: 0, max: 360 },
+                                gravityY: 0,
+                                lifespan: 2000,
+                                scale: { start: 2, end: 0 },
+                                quantity: 40,
+                                blendMode: 'ADD',
+                                tint: ringColors[i % ringColors.length]
+                            });
+                            ringEmitter.explode(40, ds.x, ds.y);
+                            this.time.delayedCall(2000, () => ringParticles.destroy());
+                        });
+
+                        this.time.delayedCall(2000, () => bigExplosion.destroy());
+                    }
+                } else {
+                    // Ricochet or just destroy bullet if not vulnerable
+                    if (bullet && bullet.destroy) bullet.destroy();
+
+                    // Force visibility if not defeated (safeguard against disappearing bug)
+                    if (ds && !deathStarDefeated && ds.visible === false) {
+                        ds.setVisible(true);
+                        ds.setAlpha(1);
+                    }
+                }
+            }, null, this);
+
             // Set up keyboard controls
             cursors = this.input.keyboard.createCursorKeys();
         }
@@ -542,7 +665,7 @@
             player = this.physics.add.sprite(config.width / 2, config.height - 60, 'ship');
             player.setCollideWorldBounds(true);
             player.setScale(0.35);
-            player.setDrag(1000);
+            player.setDrag(3000); // Increased from 1000
             player.setMaxVelocity(400);
             player.setVelocity(0, 0);
 
@@ -710,6 +833,21 @@
                 rowDirections = [];
                 enemyRows = [];
                 nextEnemyFireTime = 0;
+
+                // Reset Death Star
+                deathStarHealth = 3;
+                isDeathStarVulnerable = false;
+                deathStarDefeated = false;
+                lastDeathStarHit = 0;
+                nextBossScore = 2000;
+                if (deathStarVulnerabilityTimer) deathStarVulnerabilityTimer.remove();
+                if (deathStarTween) deathStarTween.stop();
+                if (deathStar) {
+                    deathStar.setVisible(true);
+                    deathStar.body.enable = true;
+                    deathStar.setTint(0x888888);
+                    deathStar.setScale(0.25);
+                }
             });
         }
 
@@ -728,9 +866,9 @@
             // Player movement (only if player exists, is active, and game is not over)
             if (!gameOver && player && player.active) {
                 if (cursors.left.isDown) {
-                    player.setAccelerationX(-1200);
+                    player.setAccelerationX(-3000); // Increased from 1200
                 } else if (cursors.right.isDown) {
-                    player.setAccelerationX(1200);
+                    player.setAccelerationX(3000); // Increased from 1200
                 } else {
                     player.setAccelerationX(0);
                 }
@@ -881,6 +1019,38 @@
                     enemyBullet.destroy();
                 }
             });
+
+            // Death Star Logic
+            // Trigger only when score crosses the threshold
+            if (!deathStarDefeated && !isDeathStarVulnerable && score >= nextBossScore) {
+                isDeathStarVulnerable = true;
+                // Increment threshold so it doesn't re-trigger immediately
+                // Next boss at current + 2000 (e.g. 2000, 4000, 6000)
+                nextBossScore += 2000;
+
+                // Start pulsing visual
+                deathStarTween = this.tweens.add({
+                    targets: deathStar,
+                    scale: { from: 0.25, to: 0.28 },
+                    tint: { from: 0x888888, to: 0xffaaaa }, // Pulse to reddish
+                    duration: 500,
+                    yoyo: true,
+                    repeat: -1
+                });
+
+                // Set 10s timer
+                deathStarVulnerabilityTimer = this.time.delayedCall(10000, () => {
+                    if (!deathStarDefeated) {
+                        isDeathStarVulnerable = false;
+                        if (deathStarTween) deathStarTween.stop();
+                        deathStar.setScale(0.25);
+                        deathStar.setTint(0x888888); // Back to invulnerable
+                        // Reset health for next encounter? Or keep it damaged?
+                        // Usually boss health resets if you fail to kill it.
+                        deathStarHealth = 3;
+                    }
+                });
+            }
         }
     </script>
 </body>
