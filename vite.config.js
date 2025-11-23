@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig(({ command }) => {
     // Use relative paths for dev, absolute path for production builds
@@ -6,6 +7,16 @@ export default defineConfig(({ command }) => {
     
     return {
         base,
+        plugins: [
+            viteStaticCopy({
+                targets: [
+                    {
+                        src: 'assets/*',
+                        dest: 'assets'
+                    }
+                ]
+            })
+        ],
         build: {
             assetsInlineLimit: 0, // Ensure assets are not inlined as base64
         },
