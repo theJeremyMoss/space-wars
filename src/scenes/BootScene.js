@@ -6,11 +6,12 @@ export default class BootScene extends Phaser.Scene {
     }
 
     preload() {
-        // Load assets
-        this.load.image('ship', '/assets/player.png');
-        this.load.image('deathstar', '/assets/deathstar.png');
-        this.load.image('enemy1', '/assets/enemy1.png');
-        this.load.image('enemy2', '/assets/enemy2.png');
+        // Load assets - use relative paths that work with both dev and production
+        const baseUrl = import.meta.env.BASE_URL;
+        this.load.image('ship', `${baseUrl}assets/player.png`);
+        this.load.image('deathstar', `${baseUrl}assets/deathstar.png`);
+        this.load.image('enemy1', `${baseUrl}assets/enemy1.png`);
+        this.load.image('enemy2', `${baseUrl}assets/enemy2.png`);
 
         // Generate textures that were previously generated in create()
         // We can do this in create() of this scene or GameScene
